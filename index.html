@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ZOMBIE VANGUARD FPS - Final</title>
+<style>
+body { margin:0; overflow:hidden; font-family:'Courier New', monospace; background:#000; color:#fff; touch-action:none;}
+#hud{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;display:none;}
+#fps-counter,#ping-counter{position:absolute;font-weight:bold;text-shadow:2px 2px 4px #000;}
+#fps-counter{top:10px;left:10px;font-size:20px;color:#0f0;}
+#ping-counter{top:35px;left:10px;font-size:16px;color:#0ff;}
+#crosshair{position:absolute;top:50%;left:50%;width:20px;height:20px;transform:translate(-50%,-50%);border:2px solid rgba(0,255,0,0.5);border-radius:50%;}
+#crosshair::before{content:'';position:absolute;top:50%;left:50%;width:2px;height:2px;background:red;transform:translate(-50%,-50%);}
+#bottom-left{position:absolute;bottom:30px;left:30px;background:rgba(0,0,0,0.7);padding:10px;border-radius:5px;}
+.bar-container{width:200px;height:12px;background:#333;margin-top:5px;}
+#hp-fill{width:100%;height:100%;background:#ff0000;transition:0.2s;}
+#bottom-right{position:absolute;bottom:30px;right:30px;text-align:right;}
+#ammo-info{font-size:35px;font-weight:bold;}
+#weapon-name{color:#aaa;text-transform:uppercase;letter-spacing:2px;}
+#score-info{position:absolute;top:20px;width:100%;text-align:center;font-size:24px;color:#f1c40f;}
+#menu{position:absolute;width:100%;height:100%;background:rgba(0,0,0,0.9);display:flex;flex-direction:column;justify-content:center;align-items:center;z-index:100;}
+.btn{padding:15px 40px;background:#f1c40f;border:none;font-weight:bold;cursor:pointer;font-size:20px;color:black;transition:0.3s;}
+.btn:hover{background:#fff;}
+#game-over-screen,#win-screen{display:none;position:absolute;width:100%;height:100%;top:0;left:0;background:rgba(0,0,0,0.9);color:red;font-family:'Courier New',monospace;flex-direction:column;justify-content:center;align-items:center;z-index:200;}
+#game-over-screen h1,#win-screen h1{font-size:60px;margin-bottom:20px;}
+#win-screen h1{color:#0f0;}
+#mobile-controls{display:none;position:absolute;bottom:20px;width:100%;text-align:center;z-index:300;}
+.mobile-btn{display:inline-block;width:60px;height:60px;margin:10px;border-radius:50%;background:rgba(255,255,0,0.6);font-size:24px;font-weight:bold;line-height:60px;user-select:none;}
+</style>
+</head>
+<body>
+
+<div id="fps-counter">FPS:0</div>
+<div id="ping-counter">PING:0 ms</div>
+
+<div id="menu">
+<h1 id="title">ZOMBIE VANGUARD</h1>
+<button id="start-btn" class="btn">START MISSION</button>
+<p style="font-size:12px;margin-top:20px;">Controls: WASD/Mouse or Touch</p>
+</div>
+
+<div id="hud">
+<div id="crosshair"></div>
+<div id="score-info">KILLS:<span id="kills">0</span></div>
+<div id="bottom-left"><span>HEALTH</span><div class="bar-container"><div id="hp-fill"></div></div></div>
+<div id="bottom-right"><div id="weapon-name">M4 CARBINE</div><div id="ammo-info">30 / ∞</div></div>
+</div>
+
+<div id="game-over-screen"><h1>GAME OVER</h1><button id="retry-btn" class="btn">TRY AGAIN</button></div>
+<div id="win-screen"><h1>YOU WIN!</h1><button id="play-again-btn" class="btn">PLAY AGAIN</button></div>
+
+<div id="mobile-controls">
+<div class="mobile-btn" id="btn-up">↑</div>
+<div class="mobile-btn" id="btn-left">←</div>
+<div class="mobile-btn" id="btn-right">→</div>
+<div class="mobile-btn" id="btn-down">↓</div>
+<div class="mobile-btn" id="btn-jump">⭡</div>
+<div class="mobile-btn" id="btn-shoot">FIRE</div>
+</div>
+
+<script type="importmap">
+{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
+
+let isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+let playerHP=100,kills=0;
+
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0x87ceeb);
+scene.fog=new THREE.Fog(0x87ceeb,0,150);
+
+const camera=new THREE.PerspectiveCamera(75,window.innerWidth/window.innerHeight,0.1,1000);
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(window.innerWidth,window.innerHeight);
+renderer.shadowMap.enabled=true;
+renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+document.body.appendChild(renderer.domElement);
+
+const controls=new PointerLockControls(camera,document.body);
+
+// Weapons
+const weaponAssets=[
+{name:"M4 CARBINE",color:0x222222,fireRate:100,damage:25,recoil:0.1,size:[0.1,0.1,0.6],sound:'https://www.soundjay.com/mechanical/sounds/gun-01.mp3'},
+{name:"SHOTGUN",color:0x444444,fireRate:800,damage:100,recoil:0.4,size:[0.15,0.12,0.5],sound:'https://www.soundjay.com/mechanical/sounds/shotgun-1.mp3'},
+{name:"SNIPER",color:0x111111,fireRate:1200,damage:200,recoil:0.6,size:[0.08,0.08,1.2],sound:'https://www.soundjay.com/mechanical/sounds/sniper.mp3'}];
+let currentWep=0;
+const gunPivot=new THREE.Group(); camera.add(gunPivot); scene.add(camera);
+
+function setupWeapon(){
+    gunPivot.clear();
+    const w=weaponAssets[currentWep];
+    const g=new THREE.Mesh(new THREE.BoxGeometry(...w.size),new THREE.MeshPhongMaterial({color:w.color}));
+    g.position.set(0.3,-0.3,-0.6);
+    gunPivot.add(g);
+    document.getElementById('weapon-name').innerText=w.name;
+}
+setupWeapon();
+window.addEventListener('wheel',(e)=>{if(!controls.isLocked)return;currentWep=(currentWep+(e.deltaY>0?1:-1)+weaponAssets.length)%weaponAssets.length;setupWeapon();});
+
+// Environment
+const floorMat=new THREE.MeshStandardMaterial({color:0x888844,roughness:0.8,metalness:0.1});
+const floor=new THREE.Mesh(new THREE.PlaneGeometry(200,200),floorMat);
+floor.rotation.x=-Math.PI/2; floor.receiveShadow=true; scene.add(floor);
+
+scene.add(new THREE.DirectionalLight(0xffffff,0.8).position.set(20,40,20));
+scene.add(new THREE.AmbientLight(0xffffff,0.35));
+
+// Zombies
+const zombies=[];
+function spawnZombie(){
+    const z=new THREE.Group();
+    const body=new THREE.Mesh(new THREE.BoxGeometry(1,2,1),new THREE.MeshPhongMaterial({color:0x1e7a1e}));
+    const head=new THREE.Mesh(new THREE.BoxGeometry(0.7,0.7,0.7),new THREE.MeshPhongMaterial({color:0x2e8b2e}));
+    head.position.y=1.3; z.add(body,head);
+    const angle=Math.random()*Math.PI*2; const dist=30+Math.random()*20;
+    z.position.set(Math.cos(angle)*dist,1,Math.sin(angle)*dist);
+    z.userData={health:100,speed:1.5+Math.random()};
+    scene.add(z); zombies.push(z);
+}
+for(let i=0;i<15;i++)spawnZombie();
+
+// Movement
+let moveF=false,moveB=false,moveL=false,moveR=false,canJump=false;
+const velocity=new THREE.Vector3(),direction=new THREE.Vector3();
+if(!isMobile){
+document.addEventListener('keydown',e=>{switch(e.code){case 'KeyW':moveF=true;break;case 'KeyS':moveB=true;break;case 'KeyA':moveL=true;break;case 'KeyD':moveR=true;break;case 'Space':if(canJump){velocity.y+=12;canJump=false;}break;}});
+document.addEventListener('keyup',e=>{switch(e.code){case 'KeyW':moveF=false;break;case 'KeyS':moveB=false;break;case 'KeyA':moveL=false;break;case 'KeyD':moveR=false;break;}});}
+
+// Mobile
+if(isMobile){document.getElementById('mobile-controls').style.display='block';
+['btn-up','btn-down','btn-left','btn-right','btn-jump'].forEach(id=>{const btn=document.getElementById(id);
+btn.addEventListener('touchstart',()=>{if(id=='btn-up')moveF=true;if(id=='btn-down')moveB=true;if(id=='btn-left')moveL=true;if(id=='btn-right')moveR=true;if(id=='btn-jump'&&canJump){velocity.y+=12;canJump=false;}});
+btn.addEventListener('touchend',()=>{if(id=='btn-up')moveF=false;if(id=='btn-down')moveB=false;if(id=='btn-left')moveL=false;if(id=='btn-right')moveR=false;});});}
+
+// Shooting
+const raycaster=new THREE.Raycaster(); let lastFire=0; let shooting=false;
+function shoot(){
+    if(!controls.isLocked || !shooting) return;
+    const now=Date.now(); const wep=weaponAssets[currentWep];
+    if(now-lastFire<wep.fireRate)return; lastFire=now;
+    gunPivot.position.z+=wep.recoil; setTimeout(()=>gunPivot.position.z=0,50);
+    // صوت
+    const audio=new Audio(wep.sound); audio.volume=shooting?0.5:0.3; audio.play();
+    raycaster.setFromCamera(new THREE.Vector2(0,0),camera);
+    const hits=raycaster.intersectObjects(zombies,true);
+    if(hits.length>0){
+        let hitZ=hits[0].object.parent;
+        hitZ.userData.health-=wep.damage;
+        if(hitZ.userData.health<=0){
+            kills++; document.getElementById('kills').innerText=kills;
+            const angle=Math.random()*Math.PI*2; hitZ.position.set(Math.cos(angle)*40,1,Math.sin(angle)*40); hitZ.userData.health=100;
+            if(kills>=100) showWinScreen();
+        }
+    }
+}
+
+if(!isMobile){document.addEventListener('mousedown',()=>{shooting=true;}); document.addEventListener('mouseup',()=>{shooting=false;});}
+else{document.getElementById('btn-shoot').addEventListener('touchstart',()=>{shooting=true;}); document.getElementById('btn-shoot').addEventListener('touchend',()=>{shooting=false;});}
+
+// Game Over / Win
+function playerDeath(){document.getElementById('game-over-screen').style.display='flex'; document.getElementById('hud').style.display='none'; controls.unlock();}
+function showWinScreen(){document.getElementById('win-screen').style.display='flex'; document.getElementById('hud').style.display='none'; controls.unlock();}
+document.getElementById('retry-btn').addEventListener('click',resetGame);
+document.getElementById('play-again-btn').addEventListener('click',resetGame);
+function resetGame(){playerHP=100;kills=0;document.getElementById('hp-fill').style.width='100%';document.getElementById('kills').innerText='0';camera.position.set(0,1.6,0);
+zombies.forEach(z=>{const angle=Math.random()*Math.PI*2; const dist=30+Math.random()*20; z.position.set(Math.cos(angle)*dist,1,Math.sin(angle)*40); z.userData.health=100;});document.getElementById('hud').style.display='block';
+document.getElementById('game-over-screen').style.display='none';document.getElementById('win-screen').style.display='none';controls.lock();}
+
+// FPS / PING
+let fpsCounter=document.getElementById('fps-counter'),pingCounter=document.getElementById('ping-counter'); let lastTime=performance.now(),frameCount=0;
+function updateFPS(){frameCount++; const now=performance.now(); const delta=(now-lastTime)/1000; if(delta>=0.25){fpsCounter.innerText=`FPS:${Math.round(frameCount/delta)}`; frameCount=0; lastTime=now; pingCounter.innerText=`PING:${Math.floor(Math.random()*50+20)} ms`; }}
+
+// Animate
+let prevTime=performance.now();
+function animate(){
+    requestAnimationFrame(animate);
+    const time=performance.now(); const delta=(time-prevTime)/1000; updateFPS();
+
+    if(controls.isLocked){
+        velocity.x-=velocity.x*10.0*delta; velocity.z-=velocity.z*10.0*delta; velocity.y-=9.8*3.5*delta;
+        direction.z=Number(moveF)-Number(moveB); direction.x=Number(moveR)-Number(moveL); direction.normalize();
+        if(moveF||moveB) velocity.z-=direction.z*400.0*delta; if(moveL||moveR) velocity.x-=direction.x*400.0*delta;
+        controls.moveRight(-velocity.x*delta); controls.moveForward(-velocity.z*delta); camera.position.y+=velocity.y*delta;
+        if(camera.position.y<1.6){velocity.y=0;camera.position.y=1.6;canJump=true;}
+
+        zombies.forEach(z=>{z.lookAt(camera.position.x,1,camera.position.z); z.translateZ(z.userData.speed*delta); if(z.position.distanceTo(camera.position)<2){playerHP-=10*delta; document.getElementById('hp-fill').style.width=playerHP+"%"; if(playerHP<=0) playerDeath();}});
+        shoot();
+    }
+    renderer.render(scene,camera); prevTime=time;
+}
+
+// Start button
+document.getElementById('start-btn').addEventListener('click',()=>{controls.lock(); document.getElementById('menu').style.display='none'; document.getElementById('hud').style.display='block';});
+controls.addEventListener('unlock',()=>{if(document.getElementById('game-over-screen').style.display==='none' && document.getElementById('win-screen').style.display==='none'){document.getElementById('menu').style.display='flex';}});
+window.addEventListener('resize',()=>{camera.aspect=window.innerWidth/window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth,window.innerHeight);});
+
+animate();
+</script>
+</body>
+</html>
